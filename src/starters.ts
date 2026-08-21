@@ -1,11 +1,19 @@
+import { escapeSource } from './prompt.ts'
+
+export const MAX_STARTER = 200
+
 /** Достаёт вопросы из свободного ответа модели. Модель нередко добавляет преамбулу. */
 export function parseStarters(raw: string): string[] {
   return raw
     .split('\n')
     .map((l) => l.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim())
-    .filter((l) => l.endsWith('?') && l.length > 5)
+    // Длина ограничена с обеих сторон: абзац-простыня, случайно кончающийся на
+    // «?», не должен стать карточкой во всю страницу.
+    .filter((l) => l.endsWith('?') && l.length > 5 && l.length <= MAX_STARTER)
     .slice(0, 4)
 }
+
+const MAX_SAMPLE = 12000
 
 const PROMPT = [
   'Ниже — фрагменты публичного сайта компании.',
@@ -14,6 +22,23 @@ const PROMPT = [
   'Выведи только список вопросов, по одному в строке, без пояснений.',
 ].join(' ')
 
+/**
+ * Текст с сайта лида — недоверенный ввод: он попадает к модели только через тот
+ * же слой экранирования, что и ответы посетителю (см. buildPrompt в prompt.ts).
+ * Инструкция стоит до и после данных — так её труднее перехватить из середины.
+ */
+export function buildStartersPrompt(text: string): string {
+  return [
+    PROMPT,
+    '',
+    '<source>',
+    escapeSource(text.slice(0, MAX_SAMPLE)),
+    '</source>',
+    '',
+    PROMPT,
+  ].join('\n')
+}
+
 export async function suggestStarters(text: string, apiKey = process.env.GEMINI_API_KEY): Promise<string[]> {
   const res = await fetch(
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
@@ -21,7 +46,7 @@ export async function suggestStarters(text: string, apiKey = process.env.GEMINI_
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey ?? '' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `${PROMPT}\n\n---\n${text.slice(0, 12000)}` }] }],
+        contents: [{ parts: [{ text: buildStartersPrompt(text) }] }],
         // Измерено живым вызовом: с thinking включённым 284 из 300 токенов бюджета
         // уходят в thoughtsTokenCount, ответ обрывается на MAX_TOKENS. Извлечение
         // вопросов из текста не требует рассуждений — отключаем thinking целиком.
