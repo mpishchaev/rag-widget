@@ -1512,7 +1512,9 @@ async function generate(prompt: string, apiKey: string): Promise<string> {
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
+        // thinkingBudget: 0 обязателен. Без него gemini-2.5-flash тратит бюджет
+        // на внутренние рассуждения и упирается в MAX_TOKENS, не выдав ответа.
+        generationConfig: { temperature: 0.2, maxOutputTokens: 800, thinkingConfig: { thinkingBudget: 0 } },
       }),
     },
   )
@@ -1695,7 +1697,9 @@ export async function suggestStarters(text: string, apiKey = process.env.GEMINI_
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey ?? '' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${PROMPT}\n\n---\n${text.slice(0, 12000)}` }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 300 },
+        // thinkingBudget: 0 обязателен — иначе рассуждения съедают весь бюджет
+        // (замерено: 284 токена из 300 на thinking, ответ обрезан).
+        generationConfig: { temperature: 0.4, maxOutputTokens: 300, thinkingConfig: { thinkingBudget: 0 } },
       }),
     },
   )
