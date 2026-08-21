@@ -131,3 +131,12 @@ end $$;
 
 revoke all on function upsert_lead(text, text, text) from public, anon;
 revoke all on function upsert_page(uuid, text, text, int) from public, anon;
+
+create or replace function set_starters(p_slug text, p_questions jsonb)
+returns table (access_key text)
+language sql security definer set search_path = public as $$
+  update leads set starter_questions = p_questions where slug = p_slug
+  returning leads.access_key;
+$$;
+
+revoke all on function set_starters(text, jsonb) from public, anon;

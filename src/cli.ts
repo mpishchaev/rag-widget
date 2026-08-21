@@ -5,6 +5,7 @@ import { embed } from './embed.ts'
 import { insert, rpc } from './db.ts'
 import { slugify, savePages, loadPages } from './store.ts'
 import { fetchAsPage, manualPage, appendPage } from './add.ts'
+import { suggestStarters } from './starters.ts'
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -97,8 +98,27 @@ async function doAddText(): Promise<void> {
   console.log(`добавлено: ${file} (${page.text.length} символов) — запусти ingest, чтобы попало в индекс`)
 }
 
+async function doPublish(): Promise<void> {
+  const pages = await loadPages(slug)
+  const sample = pages.map((p) => p.text).join('\n\n').slice(0, 12000)
+  const starters = await suggestStarters(sample)
+  console.log('стартовые вопросы:', starters.length ? starters : '(не собрались, страница будет без карточек)')
+
+  const rows = await rpc<{ access_key: string }[]>('set_starters', {
+    p_slug: slug,
+    p_questions: JSON.stringify(starters),
+  })
+  console.log(`\nссылка: https://coadvise.co/d/${rows[0].access_key}\n`)
+}
+
+async function doDemo(): Promise<void> {
+  await doCrawl()
+  await doIngest()
+  await doPublish()
+}
+
 const commands: Record<string, () => Promise<void>> = {
-  crawl: doCrawl, ingest: doIngest,
+  crawl: doCrawl, ingest: doIngest, publish: doPublish, demo: doDemo,
   'add-url': doAddUrl, 'add-text': doAddText,
 }
 const run = commands[command]
