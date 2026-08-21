@@ -28,7 +28,11 @@ export async function rpc<T>(
     body: JSON.stringify(params),
   })
   if (!res.ok) throw new Error(`RPC ${name}: ${res.status} ${await res.text()}`)
-  return (await res.json()) as T
+  // Функции, возвращающие void (log_question), дают 204 с пустым телом —
+  // res.json() на нём кидает SyntaxError уже после успешной вставки.
+  if (res.status === 204) return null as T
+  const body = await res.text()
+  return (body ? JSON.parse(body) : null) as T
 }
 
 /** Прямая запись в таблицу. Доступна только секретному ключу — RLS не пускает publishable. */

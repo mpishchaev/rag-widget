@@ -59,3 +59,22 @@ test('POST на страницу (без /ask) не отдаёт HTML', async ()
   const res = await worker.fetch(req, env)
   assert.equal(res.status, 405)
 })
+
+test('429 от эмбеддинга даёт JSON с просьбой повторить, а не падение обработчика', async () => {
+  const res = await withFetch(async (url) => {
+    if (url.includes('rpc/session_count')) return Response.json(0)
+    if (url.includes('batchEmbedContents')) return new Response('quota exceeded', { status: 429 })
+    throw new Error('неожиданный URL: ' + url)
+  }, async () => {
+    const req = new Request('https://w.example/d/1234567890123456/ask', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question: 'Вопрос?', session: 'sess-1' }),
+    })
+    return worker.fetch(req, env)
+  })
+  assert.equal(res.headers.get('content-type'), 'application/json; charset=utf-8')
+  const data = await res.json() as { answer: string }
+  assert.match(data.answer, /ещё раз|позже/i)
+  assert.doesNotMatch(data.answer, /quota exceeded/)
+})

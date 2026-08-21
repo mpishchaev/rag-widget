@@ -98,7 +98,14 @@ export default {
       return json({ answer: `Достигнут потолок в ${MAX_SESSION} вопросов. Напишите команде напрямую.` })
     }
 
-    const [vector] = await embed([question], 'RETRIEVAL_QUERY', env.GEMINI_API_KEY)
+    // 429 free tier — ожидаемый случай на демо, а не экзотика: наружу уходит
+    // тот же JSON, что и у остальных сбоев, а не страница ошибки Cloudflare.
+    let vector: number[]
+    try {
+      vector = (await embed([question], 'RETRIEVAL_QUERY', env.GEMINI_API_KEY))[0]
+    } catch {
+      return json({ answer: 'Не удалось обработать вопрос. Попробуйте ещё раз через минуту.' }, 502)
+    }
     let sources: Source[]
     try {
       sources = await rpc<Source[]>(
