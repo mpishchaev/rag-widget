@@ -98,3 +98,36 @@ grant execute on function get_lead_page(text) to anon;
 grant execute on function match_chunks(text, vector, int) to anon;
 grant execute on function session_count(text, text) to anon;
 grant execute on function log_question(text, text, text, boolean) to anon;
+
+-- Пишущие функции. Публичной роли НЕ выдаются: доступны только секретному ключу.
+create or replace function upsert_lead(p_slug text, p_name text, p_site_url text)
+returns table (id uuid)
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  select l.id into v_id from leads l where l.slug = p_slug;
+  if v_id is null then
+    insert into leads (slug, name, site_url, access_key)
+    values (p_slug, p_name, p_site_url, encode(gen_random_bytes(24), 'hex'))
+    returning leads.id into v_id;
+  else
+    update leads set name = p_name, site_url = p_site_url where leads.id = v_id;
+    delete from chunks where lead_id = v_id;  -- переиндексация: чанки заменяются целиком
+  end if;
+  return query select v_id;
+end $$;
+
+create or replace function upsert_page(p_lead_id uuid, p_url text, p_title text, p_char_count int)
+returns table (id uuid)
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  insert into pages (lead_id, url, title, char_count)
+  values (p_lead_id, p_url, p_title, p_char_count)
+  on conflict (lead_id, url) do update set title = excluded.title, char_count = excluded.char_count, fetched_at = now()
+  returning pages.id into v_id;
+  return query select v_id;
+end $$;
+
+revoke all on function upsert_lead(text, text, text) from public, anon;
+revoke all on function upsert_page(uuid, text, text, int) from public, anon;
