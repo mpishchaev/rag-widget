@@ -795,9 +795,10 @@ export async function embed(
   if (texts.length === 0) return []
   if (texts.length > 100) throw new Error(`батч ${texts.length} > 100, режь мельче`)
 
-  const res = await fetch(`${ENDPOINT}?key=${apiKey}`, {
+  const res = await fetch(ENDPOINT, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    // Ключ идёт заголовком, а не в URL: query-параметр оседает в логах прокси и CDN.
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       requests: texts.map((text) => ({
         model: `models/${MODEL}`,
@@ -1490,10 +1491,10 @@ function json(data: unknown, status = 200): Response {
 
 async function generate(prompt: string, apiKey: string): Promise<string> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEN_MODEL}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEN_MODEL}:generateContent`,
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
@@ -1673,10 +1674,10 @@ const PROMPT = [
 
 export async function suggestStarters(text: string, apiKey = process.env.GEMINI_API_KEY): Promise<string[]> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey ?? '' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${PROMPT}\n\n---\n${text.slice(0, 12000)}` }] }],
         generationConfig: { temperature: 0.4, maxOutputTokens: 300 },
