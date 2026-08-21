@@ -25,9 +25,10 @@ export async function embed(
   if (texts.length === 0) return []
   if (texts.length > 100) throw new Error(`батч ${texts.length} > 100, режь мельче`)
 
-  const res = await fetch(`${ENDPOINT}?key=${apiKey}`, {
+  const res = await fetch(ENDPOINT, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    // ключ в заголовке, не в query-параметре: URL с ?key= попадает в логи прокси и CDN
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       requests: texts.map((text) => ({
         model: `models/${MODEL}`,
