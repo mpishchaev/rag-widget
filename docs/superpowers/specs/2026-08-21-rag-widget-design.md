@@ -101,10 +101,19 @@ ask_log    id · lead_id fk · session_id · question · had_answer bool · crea
 
 ### Изоляция лидов
 
-Ключ Supabase — нового формата (`sb_secret_…`, пришёл на смену `service_role`;
-серверный, в браузер не отдаётся никогда).
+**Два ключа с разными правами — это и есть изоляция, а не дисциплина кода:**
 
-RLS включён на всех таблицах, прямого доступа нет. Единственная дверь —
+| Кто | Ключ | Что может |
+|---|---|---|
+| Локальный конвейер (`crawl`/`ingest`/`publish`) | `sb_secret_…` | Обходит RLS, пишет напрямую. Живёт только на машине оператора |
+| Worker (отвечает посетителям) | `sb_publishable_…` | RLS блокирует все таблицы. Доступны **только** три RPC |
+
+Worker не держит секретного ключа вовсе. Даже полная компрометация Worker'а не
+даёт прямого доступа к таблицам — только вызовы RPC, каждый из которых требует
+`access_key` конкретной страницы.
+
+RLS включён на всех таблицах, политик нет — прямой доступ закрыт для всех.
+Единственная дверь —
 `SECURITY DEFINER` RPC, принимающая **`access_key` страницы, а не `lead_id`**:
 
 ```
@@ -188,7 +197,8 @@ checkout → npm ci → npm test → cloudflare/wrangler-action@v3
 | `CLOUDFLARE_API_TOKEN` | GitHub repo secrets | Нужен CI для выката. Права минимальные: `Edit Cloudflare Workers` |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub repo secrets | Требуется тем же шагом |
 | `SUPABASE_URL` | `wrangler.jsonc` (vars) | Не секрет |
-| `SUPABASE_SECRET_KEY` | Worker Secrets (дашборд Cloudflare) | **В GitHub не попадает вообще** |
+| `SUPABASE_SECRET_KEY` | только `.dev.vars` на машине оператора | Worker его не получает вовсе |
+| `SUPABASE_PUBLISHABLE_KEY` | `wrangler.jsonc` (vars) | Не секрет: RLS не пускает его никуда, кроме RPC |
 | `GEMINI_API_KEY` | Worker Secrets (дашборд Cloudflare) | То же |
 
 Рантайм-секреты задаются один раз в дашборде и переживают выкаты. CI их не
