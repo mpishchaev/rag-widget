@@ -30,7 +30,10 @@ async function generate(prompt: string, apiKey: string): Promise<string> {
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
+        // Измерено живым вызовом: с thinking включённым 284 из 300 токенов бюджета
+        // уходят в thoughtsTokenCount, ответ обрывается на MAX_TOKENS. Ответ по
+        // приведённым источникам не требует рассуждений — отключаем thinking целиком.
+        generationConfig: { temperature: 0.2, maxOutputTokens: 800, thinkingConfig: { thinkingBudget: 0 } },
       }),
     },
   )

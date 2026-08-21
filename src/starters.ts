@@ -22,7 +22,10 @@ export async function suggestStarters(text: string, apiKey = process.env.GEMINI_
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey ?? '' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${PROMPT}\n\n---\n${text.slice(0, 12000)}` }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 300 },
+        // Измерено живым вызовом: с thinking включённым 284 из 300 токенов бюджета
+        // уходят в thoughtsTokenCount, ответ обрывается на MAX_TOKENS. Извлечение
+        // вопросов из текста не требует рассуждений — отключаем thinking целиком.
+        generationConfig: { temperature: 0.4, maxOutputTokens: 300, thinkingConfig: { thinkingBudget: 0 } },
       }),
     },
   )
