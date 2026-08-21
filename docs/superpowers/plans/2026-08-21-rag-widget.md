@@ -15,6 +15,7 @@
 Требования проекта — действуют в каждой задаче, повторять не буду:
 
 - **Node 24 запускает `.ts` напрямую.** Никакого сборочного шага, никакого `tsc` в тестах. Тесты — `node --test`, импорты — с расширением `.ts` (`import { x } from './x.ts'`).
+- **Тестовые файлы задаются glob-ом, а не каталогом.** `node --test src/` не работает: при сканировании каталога Node ищет только `*.test.js`/`.mjs`/`.cjs`, и `.ts` в этот набор не входит. Рабочая форма — `node --test "src/**/*.test.ts"`.
 - **Type-stripping, а не полный TypeScript.** Нельзя `enum`, `namespace`, декораторы и параметры-свойства конструктора. Типы, интерфейсы, `as` — можно.
 - **Одна зависимость: `cheerio`.** Новую добавлять только если задача явно разрешает. CLI — через `node:util.parseArgs`, HTTP — через нативный `fetch`, тесты — через `node:test` + `node:assert/strict`.
 - **Размерность эмбеддингов ровно 768** (`outputDimensionality: 768`) и **обязательная ручная нормализация** — Gemini не нормализует выходы, отличные от 3072.
@@ -50,7 +51,7 @@
   "type": "module",
   "engines": { "node": ">=24" },
   "scripts": {
-    "test": "node --test src/"
+    "test": "node --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "cheerio": "^1.0.0"
@@ -1328,15 +1329,15 @@ test('стартовые вопросы тоже экранируются', () =
 
 - [ ] **Step 2: Запустить тест, убедиться что падает**
 
-Run: `npm test -- worker/` (или `node --test worker/`)
+Run: `node --test "worker/**/*.test.ts"`
 Expected: FAIL — `Cannot find module './page.ts'`
 
 - [ ] **Step 3: Обновить скрипт тестов**
 
-В `package.json` заменить строку `"test"`:
+В `package.json` заменить строку `"test"` (добавляется второй glob — каталог `worker/`):
 
 ```json
-"test": "node --test src/ worker/"
+"test": "node --test \"src/**/*.test.ts\" \"worker/**/*.test.ts\""
 ```
 
 - [ ] **Step 4: Реализовать шаблон страницы**
