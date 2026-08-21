@@ -1,0 +1,9 @@
+node_modules/
+.dev.vars
+.env
+.env.*
+data/
+.wrangler/
+dist/
+widget-demo-rag.md
+CLAUDE.md
