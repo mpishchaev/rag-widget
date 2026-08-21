@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
 
+# Репозиторий публичный, а job держит деплойные секреты: токену workflow дальше
+# чтения кода ничего не нужно.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

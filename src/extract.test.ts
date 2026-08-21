@@ -35,9 +35,10 @@ test('длинный текст режется с нахлёстом и ниче
   const parts = chunk(text, 200, 50)
   assert.ok(parts.length > 1, 'должно быть больше одного чанка')
   for (const p of parts) assert.ok(p.length <= 200, `чанк длиннее лимита: ${p.length}`)
-  // каждое слово исходника присутствует хотя бы в одном чанке
-  const joined = parts.join(' ')
-  for (const w of text.split(' ')) assert.ok(joined.includes(w), `потеряно слово ${w}`)
+  // каждое слово исходника присутствует хотя бы в одном чанке целиком:
+  // сравнение по множеству слов, а не по includes — 'сл1' нашёлся бы внутри 'сл10'
+  const words = new Set(parts.join(' ').split(/\s+/))
+  for (const w of text.split(' ')) assert.ok(words.has(w), `потеряно слово ${w}`)
 })
 
 test('нахлёст реально перекрывает соседей', () => {

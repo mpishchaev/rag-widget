@@ -18,6 +18,24 @@ export function parseRobots(txt: string, ua = '*'): string[] {
   return disallows
 }
 
+/**
+ * Правило robots.txt в регулярку: `*` — любая подстрока, завершающий `$` — конец
+ * пути. Без этого `Disallow: /*.php$` сравнивался бы как префикс `/*` и не
+ * совпадал ни с чем — запрещённые страницы уходили бы в обход.
+ *
+ * ponytail: `Allow:` не разбирается вовсе, приоритет самого длинного правила из
+ * спецификации не реализован. Потолок — сайт с `Disallow: /` + `Allow: /public`
+ * будет пропущен целиком; ошибка в безопасную сторону (не обходим лишнего).
+ * Апгрейд — разбирать Allow и сравнивать по длине совпавшего правила.
+ */
+function ruleToRegExp(rule: string): RegExp {
+  const anchored = rule.endsWith('$')
+  const body = (anchored ? rule.slice(0, -1) : rule)
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+  return new RegExp(`^${body}${anchored ? '$' : ''}`)
+}
+
 export function isAllowed(disallows: string[], pathname: string): boolean {
-  return !disallows.some((d) => pathname.startsWith(d))
+  return !disallows.some((d) => ruleToRegExp(d).test(pathname))
 }

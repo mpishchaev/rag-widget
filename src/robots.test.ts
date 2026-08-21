@@ -31,3 +31,16 @@ test('isAllowed режет по префиксу', () => {
 test('пустой robots.txt разрешает всё', () => {
   assert.equal(isAllowed(parseRobots(''), '/anything'), true)
 })
+
+test('правило с маской и якорем реально запрещает путь', () => {
+  const d = ['/*.php$']
+  assert.equal(isAllowed(d, '/index.php'), false)
+  assert.equal(isAllowed(d, '/a/b/index.php'), false)
+  assert.equal(isAllowed(d, '/index.php?x=1'), true, 'якорь $ — конец пути')
+  assert.equal(isAllowed(d, '/about'), true)
+})
+
+test('маска в середине правила раскрывается', () => {
+  assert.equal(isAllowed(['/private*/secret'], '/private-2026/secret'), false)
+  assert.equal(isAllowed(['/private*/secret'], '/public/secret'), true)
+})
