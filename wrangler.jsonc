@@ -1,0 +1,14 @@
+{
+  "name": "rag-widget",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [{ "pattern": "coadvise.co/d/*", "zone_name": "coadvise.co" }],
+  "triggers": { "crons": ["0 6 * * *"] },
+  "vars": {
+    "SUPABASE_URL": "ЗАПОЛНИТЬ: https://<ref>.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "ЗАПОЛНИТЬ: sb_publishable_..."
+  }
+  // GEMINI_API_KEY задаётся один раз в дашборде Cloudflare как Worker Secret.
+  // Секретный ключ Supabase сюда не попадает никогда.
+}
