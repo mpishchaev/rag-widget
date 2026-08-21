@@ -15,6 +15,7 @@
 Требования проекта — действуют в каждой задаче, повторять не буду:
 
 - **Node 24 запускает `.ts` напрямую.** Никакого сборочного шага, никакого `tsc` в тестах. Тесты — `node --test`, импорты — с расширением `.ts` (`import { x } from './x.ts'`).
+- **Тестовые файлы задаются glob-ом, а не каталогом.** `node --test src/` не работает: при сканировании каталога Node ищет только `*.test.js`/`.mjs`/`.cjs`, и `.ts` в этот набор не входит. Рабочая форма — `node --test "src/**/*.test.ts"`.
 - **Type-stripping, а не полный TypeScript.** Нельзя `enum`, `namespace`, декораторы и параметры-свойства конструктора. Типы, интерфейсы, `as` — можно.
 - **Одна зависимость: `cheerio`.** Новую добавлять только если задача явно разрешает. CLI — через `node:util.parseArgs`, HTTP — через нативный `fetch`, тесты — через `node:test` + `node:assert/strict`.
 - **Размерность эмбеддингов ровно 768** (`outputDimensionality: 768`) и **обязательная ручная нормализация** — Gemini не нормализует выходы, отличные от 3072.
@@ -50,7 +51,7 @@
   "type": "module",
   "engines": { "node": ">=24" },
   "scripts": {
-    "test": "node --test src/"
+    "test": "node --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "cheerio": "^1.0.0"
@@ -794,9 +795,10 @@ export async function embed(
   if (texts.length === 0) return []
   if (texts.length > 100) throw new Error(`батч ${texts.length} > 100, режь мельче`)
 
-  const res = await fetch(`${ENDPOINT}?key=${apiKey}`, {
+  const res = await fetch(ENDPOINT, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    // Ключ идёт заголовком, а не в URL: query-параметр оседает в логах прокси и CDN.
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       requests: texts.map((text) => ({
         model: `models/${MODEL}`,
@@ -1328,15 +1330,15 @@ test('стартовые вопросы тоже экранируются', () =
 
 - [ ] **Step 2: Запустить тест, убедиться что падает**
 
-Run: `npm test -- worker/` (или `node --test worker/`)
+Run: `node --test "worker/**/*.test.ts"`
 Expected: FAIL — `Cannot find module './page.ts'`
 
 - [ ] **Step 3: Обновить скрипт тестов**
 
-В `package.json` заменить строку `"test"`:
+В `package.json` заменить строку `"test"` (добавляется второй glob — каталог `worker/`):
 
 ```json
-"test": "node --test src/ worker/"
+"test": "node --test \"src/**/*.test.ts\" \"worker/**/*.test.ts\""
 ```
 
 - [ ] **Step 4: Реализовать шаблон страницы**
@@ -1352,12 +1354,27 @@ export function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
+/**
+ * Экранирования мало для href: `javascript:` проходит его невредимым и
+ * выполняется по клику. site_url приходит с чужого сайта — пускаем только
+ * http и https.
+ */
+export function safeHref(url: string): string {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? escapeHtml(u.toString()) : '#'
+  } catch {
+    return '#'
+  }
+}
+
 export type Lead = { name: string; site_url: string; starter_questions: string[] }
 
 /** Один шаблон на всех: под лида меняется только подстановка. */
 export function renderPage(lead: Lead, accessKey: string): string {
   const name = escapeHtml(lead.name)
   const site = escapeHtml(lead.site_url)
+  const href = safeHref(lead.site_url)
   const cards = lead.starter_questions
     .map((q) => `<button class="q" type="button">${escapeHtml(q)}</button>`)
     .join('\n')
@@ -1400,7 +1417,7 @@ export function renderPage(lead: Lead, accessKey: string): string {
 <body>
 <div class="wrap">
   <h1>Ассистент по сайту ${name}</h1>
-  <p class="sub">Отвечает только по материалам <a href="${site}" rel="noopener noreferrer" target="_blank">${site}</a>. Каждый ответ со ссылкой на страницу — можно проверить.</p>
+  <p class="sub">Отвечает только по материалам <a href="${href}" rel="noopener noreferrer" target="_blank">${site}</a>. Каждый ответ со ссылкой на страницу — можно проверить.</p>
   <div id="starters">${cards}</div>
   <div id="log"></div>
   <form id="f"><input id="i" placeholder="Спросите что-нибудь про компанию" autocomplete="off" maxlength="500"><button type="submit">Спросить</button></form>
@@ -1489,13 +1506,15 @@ function json(data: unknown, status = 200): Response {
 
 async function generate(prompt: string, apiKey: string): Promise<string> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEN_MODEL}:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEN_MODEL}:generateContent`,
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
+        // thinkingBudget: 0 обязателен. Без него gemini-2.5-flash тратит бюджет
+        // на внутренние рассуждения и упирается в MAX_TOKENS, не выдав ответа.
+        generationConfig: { temperature: 0.2, maxOutputTokens: 800, thinkingConfig: { thinkingBudget: 0 } },
       }),
     },
   )
@@ -1659,7 +1678,7 @@ export function parseStarters(raw: string): string[] {
   return raw
     .split('\n')
     .map((l) => l.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim())
-    .filter((l) => l.endsWith('?') && l.length > 8)
+    .filter((l) => l.endsWith('?') && l.length > 5)
     .slice(0, 4)
 }
 
@@ -1672,13 +1691,15 @@ const PROMPT = [
 
 export async function suggestStarters(text: string, apiKey = process.env.GEMINI_API_KEY): Promise<string[]> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey ?? '' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${PROMPT}\n\n---\n${text.slice(0, 12000)}` }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 300 },
+        // thinkingBudget: 0 обязателен — иначе рассуждения съедают весь бюджет
+        // (замерено: 284 токена из 300 на thinking, ответ обрезан).
+        generationConfig: { temperature: 0.4, maxOutputTokens: 300, thinkingConfig: { thinkingBudget: 0 } },
       }),
     },
   )
@@ -1751,17 +1772,18 @@ revoke all on function set_starters(text, jsonb) from public, anon;
 
 Это единственный параметр, который спека оставила открытым. Взять уже проиндексированный домен и посмотреть на реальные значения близости:
 
-Сначала получить ключ уже проиндексированного лида той же RPC, что использует
-конвейер, — без захода в дашборд:
+Сначала получить ключ уже проиндексированного лида. Читать его нужно **не**
+через `set_starters` — та функция пишет и затёрла бы стартовые вопросы. В SQL
+Editor выполнить:
+
+```sql
+select access_key from leads where slug = 'coadvise-co';
+```
+
+Скопировать значение в файл, чтобы не таскать его через историю команд:
 
 ```bash
-set -a && . ./.dev.vars && set +a
-node --input-type=module -e "
-import { rpc } from './src/db.ts'
-const rows = await rpc('set_starters', { p_slug: 'coadvise-co', p_questions: '[]' })
-console.log(rows[0].access_key)
-" > /tmp/lead-key.txt
-cat /tmp/lead-key.txt
+printf '%s' '<вставить access_key>' > /tmp/lead-key.txt
 ```
 
 Затем посмотреть на реальные значения близости:
@@ -2050,17 +2072,24 @@ jobs:
 
 Первый деплой создаст Worker; секрет задаётся после него, затем повторный push.
 
-- [ ] **Step 3: Запушить и проверить выкат**
+- [ ] **Step 3: Закоммитить workflow в рабочую ветку**
 
 ```bash
 git add .github/workflows/deploy.yml
 git commit -m "ci: выкат Worker через GitHub Actions"
-git push origin main
 ```
+
+**Шаги 4-7 выполняются только после слияния ветки в `main`** — workflow
+срабатывает на push в `main`, и до слияния выката не будет. Слияние выносится
+человеку: это публикация наружу, а не шаг реализации.
 
 Проверить: `gh run watch` или вкладка Actions. Expected: зелёный прогон, шаг Deploy печатает URL Worker'а.
 
-- [ ] **Step 4: Проверить страницу вживую**
+- [ ] **Step 4: (после слияния) Проверить выкат**
+
+Проверить: `gh run watch` или вкладка Actions. Expected: зелёный прогон, шаг Deploy печатает URL Worker'а.
+
+- [ ] **Step 5: (после слияния) Проверить страницу вживую**
 
 Взять ссылку из `doPublish` и открыть её **с телефона** (условие приёмки из спеки):
 
@@ -2076,7 +2105,7 @@ Expected: `200`. Затем на телефоне задать три вопро
 select question, had_answer, created_at from ask_log order by created_at desc limit 10;
 ```
 
-- [ ] **Step 5: Проверить, что чужой ключ не даёт чужих данных**
+- [ ] **Step 6: (после слияния) Проверить, что чужой ключ не даёт чужих данных**
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" https://coadvise.co/d/00000000000000000000000000000000
@@ -2084,7 +2113,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://coadvise.co/d/00000000000000000
 
 Expected: `404`.
 
-- [ ] **Step 6: Закоммитить финальное состояние**
+- [ ] **Step 7: (после слияния) Закоммитить финальное состояние**
 
 ```bash
 git add -A
