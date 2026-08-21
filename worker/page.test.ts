@@ -34,3 +34,11 @@ test('стартовые вопросы тоже экранируются', () =
   )
   assert.doesNotMatch(html, /<script>bad\(\)/)
 })
+
+test('javascript: URL в site_url не становится href — недоверенная схема отбрасывается', () => {
+  const html = renderPage(
+    { name: 'X', site_url: 'javascript:alert(document.cookie)', starter_questions: [] },
+    'k',
+  )
+  assert.doesNotMatch(html, /href="javascript:/)
+})

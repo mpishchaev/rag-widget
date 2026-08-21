@@ -1,3 +1,5 @@
+import { MAX_QUESTION } from '../src/prompt.ts'
+
 export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -6,12 +8,29 @@ export function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
+const SAFE_URL_SCHEMES = ['http:', 'https:']
+
+/**
+ * site_url приходит из скрапа чужого сайта — недоверенный ввод. Без проверки схемы
+ * значение вроде `javascript:alert(document.cookie)` пережило бы escapeHtml невредимым
+ * и стало бы исполняемой ссылкой в href.
+ */
+function safeUrl(url: string): string {
+  try {
+    if (SAFE_URL_SCHEMES.includes(new URL(url).protocol)) return url
+  } catch {
+    // не URL вовсе — тоже отбрасываем
+  }
+  return '#'
+}
+
 export type Lead = { name: string; site_url: string; starter_questions: string[] }
 
 /** Один шаблон на всех: под лида меняется только подстановка. */
 export function renderPage(lead: Lead, accessKey: string): string {
   const name = escapeHtml(lead.name)
   const site = escapeHtml(lead.site_url)
+  const siteHref = escapeHtml(safeUrl(lead.site_url))
   const cards = lead.starter_questions
     .map((q) => `<button class="q" type="button">${escapeHtml(q)}</button>`)
     .join('\n')
@@ -54,10 +73,10 @@ export function renderPage(lead: Lead, accessKey: string): string {
 <body>
 <div class="wrap">
   <h1>Ассистент по сайту ${name}</h1>
-  <p class="sub">Отвечает только по материалам <a href="${site}" rel="noopener noreferrer" target="_blank">${site}</a>. Каждый ответ со ссылкой на страницу — можно проверить.</p>
+  <p class="sub">Отвечает только по материалам <a href="${siteHref}" rel="noopener noreferrer" target="_blank">${site}</a>. Каждый ответ со ссылкой на страницу — можно проверить.</p>
   <div id="starters">${cards}</div>
   <div id="log"></div>
-  <form id="f"><input id="i" placeholder="Спросите что-нибудь про компанию" autocomplete="off" maxlength="500"><button type="submit">Спросить</button></form>
+  <form id="f"><input id="i" placeholder="Спросите что-нибудь про компанию" autocomplete="off" maxlength="${MAX_QUESTION}"><button type="submit">Спросить</button></form>
   <footer>Демо собрано по публичным страницам сайта. Вопросы — <a href="https://coadvise.co">coadvise.co</a>.</footer>
 </div>
 <script>

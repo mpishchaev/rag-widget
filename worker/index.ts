@@ -13,6 +13,7 @@ type Env = {
 }
 
 const GEN_MODEL = 'gemini-2.5-flash'
+const SERVICE_ERROR = 'Сервис временно недоступен. Попробуйте ещё раз позже.'
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -38,6 +39,17 @@ async function generate(prompt: string, apiKey: string): Promise<string> {
   return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? NO_ANSWER
 }
 
+/** Логирование — сайд-эффект, не источник истины для ответа: провал не должен стоить уже посчитанного ответа. */
+function logQuestion(
+  db: { url: string; key: string },
+  params: { p_access_key: string; p_session: string; p_q: string; p_had_answer: boolean },
+): Promise<void> {
+  return rpc('log_question', params, db).then(
+    () => undefined,
+    () => undefined,
+  )
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
@@ -49,7 +61,14 @@ export default {
 
     // Страница
     if (!match[2]) {
-      const rows = await rpc<Lead[]>('get_lead_page', { p_access_key: accessKey }, db)
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
+      let rows: Lead[]
+      try {
+        rows = await rpc<Lead[]>('get_lead_page', { p_access_key: accessKey }, db)
+      } catch {
+        // rpc() кладёт в сообщение тело ответа PostgREST — наружу оно уходить не должно.
+        return new Response(SERVICE_ERROR, { status: 502 })
+      }
       if (rows.length === 0) return new Response('Not found', { status: 404 })
       return new Response(renderPage(rows[0], accessKey), {
         headers: { 'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex' },
@@ -64,21 +83,33 @@ export default {
     const session = (body.session ?? '').slice(0, 64)
     if (!question || !session) return json({ answer: 'Пустой вопрос.' })
 
-    const used = await rpc<number>('session_count', { p_access_key: accessKey, p_session: session }, db)
+    let used: number
+    try {
+      used = await rpc<number>('session_count', { p_access_key: accessKey, p_session: session }, db)
+    } catch {
+      return json({ answer: SERVICE_ERROR }, 502)
+    }
+    // ponytail: session id генерируется и передаётся клиентом — сброс localStorage
+    // или новый UUID в теле запроса обходит потолок. Апгрейд: Turnstile или счётчик по IP в Worker.
     if (used >= MAX_SESSION) {
       return json({ answer: `Достигнут потолок в ${MAX_SESSION} вопросов. Напишите команде напрямую.` })
     }
 
     const [vector] = await embed([question], 'RETRIEVAL_QUERY', env.GEMINI_API_KEY)
-    const sources = await rpc<Source[]>(
-      'match_chunks',
-      { p_access_key: accessKey, p_embedding: JSON.stringify(vector), p_k: 6 },
-      db,
-    )
+    let sources: Source[]
+    try {
+      sources = await rpc<Source[]>(
+        'match_chunks',
+        { p_access_key: accessKey, p_embedding: JSON.stringify(vector), p_k: 6 },
+        db,
+      )
+    } catch {
+      return json({ answer: SERVICE_ERROR }, 502)
+    }
 
     // Отсечка до модели: нет близких чанков — нет и генерации.
     if (!hasAnswer(sources)) {
-      await rpc('log_question', { p_access_key: accessKey, p_session: session, p_q: question, p_had_answer: false }, db)
+      await logQuestion(db, { p_access_key: accessKey, p_session: session, p_q: question, p_had_answer: false })
       return json({ answer: NO_ANSWER })
     }
 
@@ -88,7 +119,8 @@ export default {
     } catch {
       answer = 'Модель не ответила. Попробуйте ещё раз через минуту.'
     }
-    await rpc('log_question', { p_access_key: accessKey, p_session: session, p_q: question, p_had_answer: true }, db)
+    // Ответ уже посчитан — провал логирования не должен стоить визитёру этого ответа.
+    await logQuestion(db, { p_access_key: accessKey, p_session: session, p_q: question, p_had_answer: true })
     return json({ answer })
   },
 
