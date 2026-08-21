@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, readdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from './crawl.ts'
 
@@ -11,13 +11,27 @@ export function leadDir(slug: string): string {
   return join('data', slug)
 }
 
-/** Сырой текст ложится файлами, чтобы перезапускать нарезку без повторного обхода. */
+/** Файлы обхода: `crawl-NNN.json`. Ручные источники живут под своим префиксом
+ * (`add-NNN.json`, см. add.ts) и повторным обходом не затрагиваются. */
+export const CRAWL_PREFIX = 'crawl-'
+
+/**
+ * Сырой текст ложится файлами, чтобы перезапускать нарезку без повторного обхода.
+ * Свой прошлый результат обход убирает целиком: иначе более короткий повторный
+ * обход оставил бы хвост от прошлого запуска, и loadPages подал бы его как
+ * актуальный. Чужие файлы (ручные вставки) не трогаются.
+ */
 export async function savePages(slug: string, pages: Page[]): Promise<void> {
   const dir = join(leadDir(slug), 'raw')
   await mkdir(dir, { recursive: true })
+  const stale = (await readdir(dir)).filter((f) => f.startsWith(CRAWL_PREFIX) && f.endsWith('.json'))
+  await Promise.all(stale.map((f) => unlink(join(dir, f))))
   await Promise.all(
     pages.map((p, i) =>
-      writeFile(join(dir, `${String(i).padStart(3, '0')}.json`), JSON.stringify(p, null, 2)),
+      writeFile(
+        join(dir, `${CRAWL_PREFIX}${String(i).padStart(3, '0')}.json`),
+        JSON.stringify(p, null, 2),
+      ),
     ),
   )
 }

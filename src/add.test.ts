@@ -22,6 +22,12 @@ test('посторонние файлы игнорируются', () => {
   assert.equal(nextIndex(['000.json', 'notes.txt', '.DS_Store']), 1)
 })
 
+test('нумерация ручных источников не зависит от файлов обхода', () => {
+  assert.equal(nextIndex(['crawl-000.json', 'crawl-001.json']), 0)
+  assert.equal(nextIndex(['crawl-000.json', 'add-000.json']), 1)
+  assert.equal(nextIndex(['add-000.json', 'add-003.json']), 4)
+})
+
 test('ручной текст становится страницей с меткой вместо url', () => {
   const p = manualPage('  Мы открыли третий цех.  ', 'linkedin-пост')
   assert.equal(p.url, 'manual:linkedin-пост')
@@ -43,6 +49,7 @@ test('две параллельные записи не затирают дру�
     const [nameA, nameB] = await Promise.all([appendPage(slug, a), appendPage(slug, b)])
 
     assert.notEqual(nameA, nameB)
+    assert.match(nameA, /^add-\d+\.json$/)
     const files = await readdir(dir)
     assert.equal(files.length, 2)
 

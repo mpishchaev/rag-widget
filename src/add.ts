@@ -4,11 +4,20 @@ import { extractText } from './extract.ts'
 import { leadDir } from './store.ts'
 import type { Page } from './crawl.ts'
 
-/** Дописывает в существующую папку, не затирая уже собранное обходом. */
+/** Префикс ручных источников: своё пространство имён, чтобы повторный обход
+ * (он пишет `crawl-NNN.json` и убирает только свои файлы) их не затирал. */
+export const ADD_PREFIX = 'add-'
+
+/**
+ * Дописывает в существующую папку, не затирая уже собранное обходом.
+ * Файлы обхода (`crawl-*`) в нумерации не участвуют. Голые `NNN.json` считаются
+ * тоже — это раскладка прошлых запусков, папку с ней перезаписывать нельзя.
+ */
 export function nextIndex(existing: string[]): number {
   const nums = existing
-    .filter((f) => /^\d+\.json$/.test(f))
-    .map((f) => Number(f.slice(0, -5)))
+    .map((f) => /^(?:add-)?(\d+)\.json$/.exec(f))
+    .filter((m) => m !== null)
+    .map((m) => Number(m[1]))
   return nums.length === 0 ? 0 : Math.max(...nums) + 1
 }
 
@@ -50,7 +59,7 @@ export async function appendPage(slug: string, page: Page): Promise<string> {
   const ATTEMPTS = 20
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     const files = await readdir(dir).catch(() => [] as string[])
-    const name = `${String(nextIndex(files)).padStart(3, '0')}.json`
+    const name = `${ADD_PREFIX}${String(nextIndex(files)).padStart(3, '0')}.json`
     try {
       await writeFile(join(dir, name), JSON.stringify(page, null, 2), { flag: 'wx' })
       return name
