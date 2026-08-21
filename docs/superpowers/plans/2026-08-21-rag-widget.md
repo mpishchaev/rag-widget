@@ -1354,12 +1354,27 @@ export function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
+/**
+ * Экранирования мало для href: `javascript:` проходит его невредимым и
+ * выполняется по клику. site_url приходит с чужого сайта — пускаем только
+ * http и https.
+ */
+export function safeHref(url: string): string {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? escapeHtml(u.toString()) : '#'
+  } catch {
+    return '#'
+  }
+}
+
 export type Lead = { name: string; site_url: string; starter_questions: string[] }
 
 /** Один шаблон на всех: под лида меняется только подстановка. */
 export function renderPage(lead: Lead, accessKey: string): string {
   const name = escapeHtml(lead.name)
   const site = escapeHtml(lead.site_url)
+  const href = safeHref(lead.site_url)
   const cards = lead.starter_questions
     .map((q) => `<button class="q" type="button">${escapeHtml(q)}</button>`)
     .join('\n')
@@ -1402,7 +1417,7 @@ export function renderPage(lead: Lead, accessKey: string): string {
 <body>
 <div class="wrap">
   <h1>Ассистент по сайту ${name}</h1>
-  <p class="sub">Отвечает только по материалам <a href="${site}" rel="noopener noreferrer" target="_blank">${site}</a>. Каждый ответ со ссылкой на страницу — можно проверить.</p>
+  <p class="sub">Отвечает только по материалам <a href="${href}" rel="noopener noreferrer" target="_blank">${site}</a>. Каждый ответ со ссылкой на страницу — можно проверить.</p>
   <div id="starters">${cards}</div>
   <div id="log"></div>
   <form id="f"><input id="i" placeholder="Спросите что-нибудь про компанию" autocomplete="off" maxlength="500"><button type="submit">Спросить</button></form>
