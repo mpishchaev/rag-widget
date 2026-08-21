@@ -49,17 +49,23 @@ alter table chunks enable row level security;
 alter table ask_log enable row level security;
 
 -- Единственная дверь: RPC принимают access_key страницы, а не lead_id.
+--
+-- search_path у всех функций ниже — `public, extensions`. Supabase ставит
+-- pgcrypto и vector в схему extensions; с `search_path = public` тело функции
+-- не находит ни gen_random_bytes (upsert_lead), ни оператор <=> (match_chunks).
+-- Тела plpgsql/sql не резолвятся при создании, поэтому ошибка вылезает не в SQL
+-- Editor, а на первом ingest и на первом вопросе посетителя.
 
 create or replace function get_lead_page(p_access_key text)
 returns table (name text, site_url text, starter_questions jsonb)
-language sql security definer set search_path = public stable as $$
+language sql security definer set search_path = public, extensions stable as $$
   select l.name, l.site_url, l.starter_questions
   from leads l where l.access_key = p_access_key;
 $$;
 
 create or replace function match_chunks(p_access_key text, p_embedding vector(768), p_k int)
 returns table (text text, url text, similarity double precision)
-language sql security definer set search_path = public stable as $$
+language sql security definer set search_path = public, extensions stable as $$
   select c.text, p.url, 1 - (c.embedding <=> p_embedding) as similarity
   from chunks c
   join leads l on l.id = c.lead_id
@@ -71,7 +77,7 @@ $$;
 
 create or replace function session_count(p_access_key text, p_session text)
 returns int
-language sql security definer set search_path = public stable as $$
+language sql security definer set search_path = public, extensions stable as $$
   select coalesce(count(*), 0)::int from ask_log a
   join leads l on l.id = a.lead_id
   where l.access_key = p_access_key and a.session_id = p_session;
@@ -80,7 +86,7 @@ $$;
 create or replace function log_question(
   p_access_key text, p_session text, p_q text, p_had_answer boolean
 ) returns void
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 declare v_lead uuid;
 begin
   select id into v_lead from leads where access_key = p_access_key;
@@ -102,7 +108,7 @@ grant execute on function log_question(text, text, text, boolean) to anon;
 -- Пишущие функции. Публичной роли НЕ выдаются: доступны только секретному ключу.
 create or replace function upsert_lead(p_slug text, p_name text, p_site_url text)
 returns table (id uuid)
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 declare v_id uuid;
 begin
   select l.id into v_id from leads l where l.slug = p_slug;
@@ -119,7 +125,7 @@ end $$;
 
 create or replace function upsert_page(p_lead_id uuid, p_url text, p_title text, p_char_count int)
 returns table (id uuid)
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 declare v_id uuid;
 begin
   insert into pages (lead_id, url, title, char_count)
@@ -129,14 +135,19 @@ begin
   return query select v_id;
 end $$;
 
-revoke all on function upsert_lead(text, text, text) from public, anon;
-revoke all on function upsert_page(uuid, text, text, int) from public, anon;
+-- Список ролей обязан быть исчерпывающим. Supabase раздаёт EXECUTE на функции
+-- по умолчанию сразу postgres, anon, authenticated, service_role; revoke from
+-- public явную выдачу роли НЕ снимает. Пропустить authenticated значит открыть
+-- пишущую SECURITY DEFINER функцию любому, кто зарегистрировался по публичному
+-- ключу. Каждая новая пишущая функция отзывается у public, anon, authenticated.
+revoke all on function upsert_lead(text, text, text) from public, anon, authenticated;
+revoke all on function upsert_page(uuid, text, text, int) from public, anon, authenticated;
 
 create or replace function set_starters(p_slug text, p_questions jsonb)
 returns table (access_key text)
-language sql security definer set search_path = public as $$
+language sql security definer set search_path = public, extensions as $$
   update leads set starter_questions = p_questions where slug = p_slug
   returning leads.access_key;
 $$;
 
-revoke all on function set_starters(text, jsonb) from public, anon;
+revoke all on function set_starters(text, jsonb) from public, anon, authenticated;
