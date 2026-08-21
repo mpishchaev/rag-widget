@@ -21,14 +21,17 @@ export function truncateQuestion(q: string): string {
 /**
  * Обезвреживает разметку блока источника. Без этого текст с чужого сайта
  * закрывает блок данных и продолжается как инструкция для модели.
+ * Экранирует и кавычку: та же функция используется и для текста чанка, и для
+ * url внутри атрибута `url="..."`, где кавычка позволила бы вырваться из
+ * атрибута и подмешать в тег фальшивые псевдо-атрибуты.
  */
 export function escapeSource(text: string): string {
-  return text.replace(/</g, '‹').replace(/>/g, '›')
+  return text.replace(/</g, '‹').replace(/>/g, '›').replace(/"/g, '″')
 }
 
 /** Отсечка до вызова модели: нет близких чанков — нет и генерации. */
 export function hasAnswer(sources: Source[]): boolean {
-  return sources.length > 0 && sources[0].similarity >= SIMILARITY_FLOOR
+  return sources.length > 0 && Math.max(...sources.map((s) => s.similarity)) >= SIMILARITY_FLOOR
 }
 
 const RULES = [
