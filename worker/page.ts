@@ -24,15 +24,20 @@ function safeUrl(url: string): string {
   return '#'
 }
 
-export type Lead = { name: string; site_url: string; starter_questions: string[] }
+// starter_questions приходит из jsonb: тип в базе не гарантирует массив (битая
+// запись, скаляр вместо массива), поэтому здесь unknown, а не string[].
+export type Lead = { name: string; site_url: string; starter_questions: unknown }
 
 /** Один шаблон на всех: под лида меняется только подстановка. */
 export function renderPage(lead: Lead, accessKey: string): string {
   const name = escapeHtml(lead.name)
   const site = escapeHtml(lead.site_url)
   const siteHref = escapeHtml(safeUrl(lead.site_url))
-  const cards = lead.starter_questions
-    .map((q) => `<button class="q" type="button">${escapeHtml(q)}</button>`)
+  // Битые данные деградируют до страницы без карточек: 500 у посетителя хуже,
+  // чем страница без подсказок.
+  const questions = Array.isArray(lead.starter_questions) ? lead.starter_questions : []
+  const cards = questions
+    .map((q) => `<button class="q" type="button">${escapeHtml(String(q))}</button>`)
     .join('\n')
 
   return `<!doctype html>

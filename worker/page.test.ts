@@ -42,3 +42,22 @@ test('javascript: URL в site_url не становится href — недов�
   )
   assert.doesNotMatch(html, /href="javascript:/)
 })
+
+test('нестроковый starter_questions не роняет страницу — карточек просто нет', () => {
+  // PostgREST может вернуть jsonb-скаляр (строку) вместо массива: битые данные
+  // должны деградировать до страницы без карточек, а не в 500.
+  const html = renderPage(
+    { name: 'X', site_url: 'https://x.com', starter_questions: '["Что вы делаете?"]' },
+    'k',
+  )
+  assert.match(html, /<div id="starters"><\/div>/)
+  assert.doesNotMatch(html, /class="q"/)
+})
+
+test('null starter_questions тоже не роняет страницу', () => {
+  const html = renderPage(
+    { name: 'X', site_url: 'https://x.com', starter_questions: null },
+    'k',
+  )
+  assert.match(html, /<div id="starters"><\/div>/)
+})

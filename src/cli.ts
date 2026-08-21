@@ -107,7 +107,7 @@ async function doPublish(): Promise<void> {
 
   const rows = await rpc<{ access_key: string }[]>('set_starters', {
     p_slug: slug,
-    p_questions: JSON.stringify(starters),
+    p_questions: starters,
   })
   const accessKey = requireAccessKey(rows, slug)
   console.log(`\nссылка: https://coadvise.co/d/${accessKey}\n`)
@@ -135,7 +135,7 @@ if (import.meta.main) {
 
   const [command, domain] = parsed.positionals
   if (!command || !domain) {
-    console.error('использование: node src/cli.ts <crawl|ingest|publish|demo|add-url|add-text> <домен> [--depth 2] [--max-pages 50] [--name "Имя"] [--url <адрес>] [--label "Метка"]')
+    console.error('использование: npm run <crawl|ingest|publish|demo|add-url|add-text> -- <домен> [--depth 2] [--max-pages 50] [--name "Имя"] [--url <адрес>] [--label "Метка"]')
     process.exit(1)
   }
 
