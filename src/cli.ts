@@ -4,6 +4,7 @@ import { chunk } from './extract.ts'
 import { embed } from './embed.ts'
 import { insert, rpc } from './db.ts'
 import { slugify, savePages, loadPages } from './store.ts'
+import { fetchAsPage, manualPage, appendPage } from './add.ts'
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -12,12 +13,14 @@ const { values, positionals } = parseArgs({
     'max-pages': { type: 'string', default: '50' },
     timeout: { type: 'string', default: '10000' },
     name: { type: 'string' },
+    url: { type: 'string' },
+    label: { type: 'string' },
   },
 })
 
 const [command, domain] = positionals
 if (!command || !domain) {
-  console.error('использование: node src/cli.ts <crawl|ingest|publish|demo> <домен> [--depth 2] [--max-pages 50] [--name "Имя"]')
+  console.error('использование: node src/cli.ts <crawl|ingest|publish|demo|add-url|add-text> <домен> [--depth 2] [--max-pages 50] [--name "Имя"] [--url <адрес>] [--label "Метка"]')
   process.exit(1)
 }
 
@@ -79,7 +82,25 @@ async function doIngest(): Promise<void> {
   console.log(`\nпроиндексировано чанков: ${total}`)
 }
 
-const commands: Record<string, () => Promise<void>> = { crawl: doCrawl, ingest: doIngest }
+async function doAddUrl(): Promise<void> {
+  if (!values.url) throw new Error('нужен --url <адрес>')
+  const page = await fetchAsPage(values.url, Number(values.timeout))
+  const file = await appendPage(slug, page)
+  console.log(`добавлено: ${file} (${page.text.length} символов) — запусти ingest, чтобы попало в индекс`)
+}
+
+async function doAddText(): Promise<void> {
+  const chunks: Buffer[] = []
+  for await (const c of process.stdin) chunks.push(c as Buffer)
+  const page = manualPage(Buffer.concat(chunks).toString('utf8'), values.label ?? 'вставка')
+  const file = await appendPage(slug, page)
+  console.log(`добавлено: ${file} (${page.text.length} символов) — запусти ingest, чтобы попало в индекс`)
+}
+
+const commands: Record<string, () => Promise<void>> = {
+  crawl: doCrawl, ingest: doIngest,
+  'add-url': doAddUrl, 'add-text': doAddText,
+}
 const run = commands[command]
 if (!run) {
   console.error(`неизвестная команда: ${command}`)
