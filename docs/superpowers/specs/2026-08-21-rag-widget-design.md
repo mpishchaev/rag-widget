@@ -37,14 +37,14 @@
 
 ```
 demo <домен>
-  crawl    robots.txt → BFS(глубина, потолок страниц, таймаут) → raw/*.html + pages.json
+  crawl    robots.txt → BFS(глубина, потолок страниц, таймаут) → raw/crawl-NNN.json
   extract  HTML → текст (меню/футер/скрипты прочь) → чанки ~800 симв., нахлёст ~120
   ingest   чанки → batchEmbed(RETRIEVAL_DOCUMENT, 768, нормализация) → upsert в Supabase
-  publish  ключ (32 симв. crypto) → LLM собирает 3-4 стартовых вопроса → печатает ссылку
+  publish  ключ (48 hex, gen_random_bytes(24)) → LLM собирает 3-4 вопроса → печатает ссылку
 
 посетитель
   GET  /d/<ключ>     get_lead_page → HTML-шаблон
-  POST /api/chat     embed(RETRIEVAL_QUERY) → match_chunks(k=6) → LLM → ответ + лог
+  POST /d/<ключ>/ask embed(RETRIEVAL_QUERY) → match_chunks(k=6) → LLM → ответ + лог
 ```
 
 ### Модули
@@ -56,7 +56,7 @@ demo <домен>
 | `ingest` | `raw/*` → эмбеддинги → Supabase | Gemini, Supabase |
 | `add` | одна ссылка **или** текст со stdin → `raw/` | сеть (или нет) |
 | `publish` | лид → ключ + стартовые вопросы → ссылка | Gemini, Supabase |
-| `worker` | `/d/<ключ>`, `/api/chat` | Supabase, Gemini |
+| `worker` | `/d/<ключ>`, `/d/<ключ>/ask` | Supabase, Gemini |
 | `demo` | одна команда: crawl → ingest → publish | всё выше |
 
 Разделение выбрано так, чтобы резать по приоритетам, ничего не ломая.
@@ -263,7 +263,7 @@ Supabase усыпляет проекты Free Plan после **7 дней ни�
 
 ## Приоритеты при сокращении объёма
 
-Первым уходит лог заданных вопросов (`ask_log` + логирование в `/api/chat`),
+Первым уходит лог заданных вопросов (`ask_log` + логирование в `/d/<ключ>/ask`),
 вторым — отделка шаблона страницы. Не сбрасываются: `crawl`, `add`, `extract`,
 хранилище с индексом, стартовые вопросы, guardrails.
 
