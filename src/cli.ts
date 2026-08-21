@@ -7,26 +7,27 @@ import { slugify, savePages, loadPages } from './store.ts'
 import { fetchAsPage, manualPage, appendPage } from './add.ts'
 import { suggestStarters } from './starters.ts'
 
-const { values, positionals } = parseArgs({
-  allowPositionals: true,
-  options: {
-    depth: { type: 'string', default: '2' },
-    'max-pages': { type: 'string', default: '50' },
-    timeout: { type: 'string', default: '10000' },
-    name: { type: 'string' },
-    url: { type: 'string' },
-    label: { type: 'string' },
-  },
-})
-
-const [command, domain] = positionals
-if (!command || !domain) {
-  console.error('использование: node src/cli.ts <crawl|ingest|publish|demo|add-url|add-text> <домен> [--depth 2] [--max-pages 50] [--name "Имя"] [--url <адрес>] [--label "Метка"]')
-  process.exit(1)
+type Values = {
+  depth?: string
+  'max-pages'?: string
+  timeout?: string
+  name?: string
+  url?: string
+  label?: string
 }
 
-const slug = slugify(domain)
-const origin = domain.includes('://') ? domain : `https://${domain}`
+// Заполняются перед запуском команды (см. import.meta.main ниже); импорт файла
+// ради тестируемых функций (requireAccessKey) не должен парсить argv и выходить.
+let values: Values = {}
+let slug = ''
+let origin = ''
+
+/** `set_starters` — единственная write-RPC, которая законно может не найти строку
+ * (UPDATE ... WHERE slug = ...): publish без предшествующего ingest, опечатка в домене. */
+export function requireAccessKey(rows: { access_key: string }[], slugForError: string): string {
+  if (rows.length === 0) throw new Error(`лид ${slugForError} не найден — сначала запусти ingest`)
+  return rows[0].access_key
+}
 
 async function doCrawl(): Promise<void> {
   console.log(`обход ${origin} (глубина ${values.depth}, потолок ${values['max-pages']})`)
@@ -108,7 +109,8 @@ async function doPublish(): Promise<void> {
     p_slug: slug,
     p_questions: JSON.stringify(starters),
   })
-  console.log(`\nссылка: https://coadvise.co/d/${rows[0].access_key}\n`)
+  const accessKey = requireAccessKey(rows, slug)
+  console.log(`\nссылка: https://coadvise.co/d/${accessKey}\n`)
 }
 
 async function doDemo(): Promise<void> {
@@ -117,13 +119,37 @@ async function doDemo(): Promise<void> {
   await doPublish()
 }
 
-const commands: Record<string, () => Promise<void>> = {
-  crawl: doCrawl, ingest: doIngest, publish: doPublish, demo: doDemo,
-  'add-url': doAddUrl, 'add-text': doAddText,
+if (import.meta.main) {
+  const parsed = parseArgs({
+    allowPositionals: true,
+    options: {
+      depth: { type: 'string', default: '2' },
+      'max-pages': { type: 'string', default: '50' },
+      timeout: { type: 'string', default: '10000' },
+      name: { type: 'string' },
+      url: { type: 'string' },
+      label: { type: 'string' },
+    },
+  })
+  values = parsed.values
+
+  const [command, domain] = parsed.positionals
+  if (!command || !domain) {
+    console.error('использование: node src/cli.ts <crawl|ingest|publish|demo|add-url|add-text> <домен> [--depth 2] [--max-pages 50] [--name "Имя"] [--url <адрес>] [--label "Метка"]')
+    process.exit(1)
+  }
+
+  slug = slugify(domain)
+  origin = domain.includes('://') ? domain : `https://${domain}`
+
+  const commands: Record<string, () => Promise<void>> = {
+    crawl: doCrawl, ingest: doIngest, publish: doPublish, demo: doDemo,
+    'add-url': doAddUrl, 'add-text': doAddText,
+  }
+  const run = commands[command]
+  if (!run) {
+    console.error(`неизвестная команда: ${command}`)
+    process.exit(1)
+  }
+  await run()
 }
-const run = commands[command]
-if (!run) {
-  console.error(`неизвестная команда: ${command}`)
-  process.exit(1)
-}
-await run()

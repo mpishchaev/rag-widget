@@ -29,7 +29,12 @@ export async function suggestStarters(text: string, apiKey = process.env.GEMINI_
       }),
     },
   )
-  if (!res.ok) return []
+  // Пустой список неотличим от «модель ничего путного не написала» — печатаем
+  // статус, чтобы не путать сбой API (авторизация/квота/rate limit) с этим случаем.
+  if (!res.ok) {
+    console.error(`suggestStarters: Gemini ответил ${res.status}`)
+    return []
+  }
   const data = (await res.json()) as { candidates?: { content: { parts: { text: string }[] } }[] }
   return parseStarters(data.candidates?.[0]?.content?.parts?.[0]?.text ?? '')
 }
