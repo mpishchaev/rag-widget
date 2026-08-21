@@ -101,6 +101,9 @@ ask_log    id · lead_id fk · session_id · question · had_answer bool · crea
 
 ### Изоляция лидов
 
+Ключ Supabase — нового формата (`sb_secret_…`, пришёл на смену `service_role`;
+серверный, в браузер не отдаётся никогда).
+
 RLS включён на всех таблицах, прямого доступа нет. Единственная дверь —
 `SECURITY DEFINER` RPC, принимающая **`access_key` страницы, а не `lead_id`**:
 
@@ -185,7 +188,7 @@ checkout → npm ci → npm test → cloudflare/wrangler-action@v3
 | `CLOUDFLARE_API_TOKEN` | GitHub repo secrets | Нужен CI для выката. Права минимальные: `Edit Cloudflare Workers` |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub repo secrets | Требуется тем же шагом |
 | `SUPABASE_URL` | `wrangler.jsonc` (vars) | Не секрет |
-| `SUPABASE_SERVICE_ROLE_KEY` | Worker Secrets (дашборд Cloudflare) | **В GitHub не попадает вообще** |
+| `SUPABASE_SECRET_KEY` | Worker Secrets (дашборд Cloudflare) | **В GitHub не попадает вообще** |
 | `GEMINI_API_KEY` | Worker Secrets (дашборд Cloudflare) | То же |
 
 Рантайм-секреты задаются один раз в дашборде и переживают выкаты. CI их не
@@ -217,6 +220,17 @@ checkout → npm ci → npm test → cloudflare/wrangler-action@v3
 Сетевой обход, HTTP и вызовы Gemini тестами не покрываются — мокать дороже,
 чем чинить.
 
+### Пауза проекта — риск, бьющий прямо в сценарий
+
+Supabase усыпляет проекты Free Plan после **7 дней низкой активности**. Ссылка
+живёт в письме дольше семи дней, и открытие «через неделю» — не крайний, а
+обычный случай. Спящий проект означает, что демо не отвечает ровно в тот
+момент, ради которого построено.
+
+**Решение:** Cron Trigger на том же Worker'е раз в сутки делает дешёвый запрос
+к базе. Ноль новых сервисов, ноль внешних пингеров, живёт в уже существующем
+деплое.
+
 ## Известные потолки
 
 | Потолок | Число | Апгрейд |
@@ -225,6 +239,7 @@ checkout → npm ci → npm test → cloudflare/wrangler-action@v3
 | Потолок сессии | обходится очисткой localStorage | Turnstile / счёт по IP |
 | Изоляция | фильтр в запросе, не отдельные базы | отдельный проект Supabase на лида (не окупается на текущем объёме) |
 | Free tier модели | не масштабируется в продакшен | принято осознанно: это демо |
+| Пауза Supabase | 7 дней низкой активности | Cron Trigger на Worker'е, раз в сутки |
 
 ## Приоритеты при сокращении объёма
 
