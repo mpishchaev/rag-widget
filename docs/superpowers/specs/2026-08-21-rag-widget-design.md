@@ -165,6 +165,43 @@ log_question(p_access_key text, p_session text, p_q text, p_had_answer bool)
 счётчик. Апгрейд: Turnstile или счёт по IP в Worker. На текущем объёме демо не
 чиним.
 
+## Деплой
+
+Worker выкатывается **только из CI**, локальный `wrangler` не ставится и руками
+никто не деплоит. GitHub Actions на push в `main`:
+
+```
+checkout → npm ci → npm test → cloudflare/wrangler-action@v3
+```
+
+Тесты стоят гейтом перед деплоем: красный тест — выката нет.
+
+### Где живут секреты
+
+Разделены по назначению, и это не формальность — репозиторий публичный:
+
+| Секрет | Где | Почему там |
+|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | GitHub repo secrets | Нужен CI для выката. Права минимальные: `Edit Cloudflare Workers` |
+| `CLOUDFLARE_ACCOUNT_ID` | GitHub repo secrets | Требуется тем же шагом |
+| `SUPABASE_URL` | `wrangler.jsonc` (vars) | Не секрет |
+| `SUPABASE_SERVICE_ROLE_KEY` | Worker Secrets (дашборд Cloudflare) | **В GitHub не попадает вообще** |
+| `GEMINI_API_KEY` | Worker Secrets (дашборд Cloudflare) | То же |
+
+Рантайм-секреты задаются один раз в дашборде и переживают выкаты. CI их не
+видит и не передаёт — компрометация GitHub-токена не даёт доступа ни к базе,
+ни к квоте модели.
+
+Локальная разработка берёт те же значения из `.dev.vars` (в `.gitignore`).
+
+### Триггер
+
+Только `push` в `main`. Не `pull_request`: репозиторий публичный, и workflow с
+доступом к секретам не должен запускаться с форков.
+
+Локальный конвейер (`crawl`, `ingest`, `publish`) в CI не участвует — это
+ручные команды под один домен за раз, они гоняются с машины оператора.
+
 ## Тесты (TDD — пишутся до кода)
 
 Покрываются чистые функции с реальной логикой:
