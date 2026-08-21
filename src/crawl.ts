@@ -8,18 +8,15 @@ export type Page = { url: string; title: string; text: string }
 const SKIP_EXT = /\.(pdf|png|jpe?g|gif|svg|webp|zip|mp4|mp3|css|js|ico|woff2?)$/i
 
 export function normalizeLink(base: URL, href: string): string | null {
-  // ponytail: WHATWG URL silently resolves a malformed absolute-looking href
-  // (e.g. '://///') as a relative path instead of throwing. Guard by requiring
-  // it to parse on its own first when it contains a scheme separator. Потолок —
-  // only catches hrefs with '://' in them; апгрейд — validate with a stricter
+  // ponytail: WHATWG URL silently resolves a malformed href that *starts*
+  // with a bare scheme separator (e.g. '://///') as a relative path instead
+  // of throwing, so the try/catch below never fires for that shape. Guarded
+  // narrowly on the literal prefix so it does NOT trip on ordinary same-host
+  // links whose query string happens to embed '://' (e.g. '/redirect?url=
+  // https://x'), which resolve correctly against `base`. Потолок — only
+  // catches hrefs starting with '://'; апгрейд — validate with a stricter
   // URL grammar if more malformed shapes turn up.
-  if (href.includes('://')) {
-    try {
-      new URL(href)
-    } catch {
-      return null
-    }
-  }
+  if (href.startsWith('://')) return null
   let u: URL
   try {
     u = new URL(href, base)
@@ -33,14 +30,14 @@ export function normalizeLink(base: URL, href: string): string | null {
   return u.toString()
 }
 
-async function get(url: string, timeoutMs: number): Promise<string | null> {
+async function get(url: string, timeoutMs: number, requireHtml = true): Promise<string | null> {
   try {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(timeoutMs),
       headers: { 'user-agent': 'rag-widget-demo (+https://coadvise.co)' },
     })
     if (!res.ok) return null
-    if (!(res.headers.get('content-type') ?? '').includes('text/html')) return null
+    if (requireHtml && !(res.headers.get('content-type') ?? '').includes('text/html')) return null
     return await res.text()
   } catch {
     return null
@@ -50,7 +47,8 @@ async function get(url: string, timeoutMs: number): Promise<string | null> {
 /** Обход в ширину с тремя обязательными ограничителями. Уважает robots.txt. */
 export async function crawl(origin: string, opts: CrawlOptions): Promise<Page[]> {
   const start = new URL(origin)
-  const robotsTxt = await get(new URL('/robots.txt', start).toString(), opts.timeoutMs)
+  // robots.txt is real servers' text/plain, not HTML — don't content-type-gate it.
+  const robotsTxt = await get(new URL('/robots.txt', start).toString(), opts.timeoutMs, false)
   const disallows = robotsTxt ? parseRobots(robotsTxt) : []
 
   const seen = new Set<string>([start.toString()])
