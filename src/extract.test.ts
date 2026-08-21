@@ -50,3 +50,9 @@ test('нахлёст реально перекрывает соседей', () =
 test('пустой вход даёт пустой список', () => {
   assert.deepEqual(chunk('   ', 800, 120), [])
 })
+
+test('слово длиннее size режется жёстко, не переполняя чанк', () => {
+  const text = 'A'.repeat(900) + ' b'
+  const parts = chunk(text, 800, 120)
+  for (const p of parts) assert.ok(p.length <= 800, `чанк длиннее лимита: ${p.length}`)
+})

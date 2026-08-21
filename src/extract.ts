@@ -17,7 +17,21 @@ export function extractText(html: string): { title: string; text: string } {
  * (Intl.Segmenter с granularity 'sentence').
  */
 export function chunk(text: string, size = 800, overlap = 120): string[] {
-  const words = text.trim().split(/\s+/).filter(Boolean)
+  // ponytail: слово длиннее size режется жёстко по символам, разрывая токен
+  // посередине (URL, base64, минифицированный код без пробелов). Потолок —
+  // кусок теряет смысловую целостность на стыке; апгрейд — переносить по
+  // границе символа с учётом Unicode-графем ([...str] вместо slice) или
+  // переносить длинные токены целиком в отдельный чанк без разбиения.
+  const words = text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((word) => {
+      if (word.length <= size) return [word]
+      const pieces: string[] = []
+      for (let i = 0; i < word.length; i += size) pieces.push(word.slice(i, i + size))
+      return pieces
+    })
   if (words.length === 0) return []
 
   const parts: string[] = []
