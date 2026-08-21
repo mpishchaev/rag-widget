@@ -7,3 +7,4 @@ data/
 dist/
 widget-demo-rag.md
 CLAUDE.md
+*.local.md
