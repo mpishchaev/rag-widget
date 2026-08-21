@@ -1659,7 +1659,7 @@ export function parseStarters(raw: string): string[] {
   return raw
     .split('\n')
     .map((l) => l.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim())
-    .filter((l) => l.endsWith('?') && l.length > 8)
+    .filter((l) => l.endsWith('?') && l.length > 5)
     .slice(0, 4)
 }
 
@@ -1751,17 +1751,18 @@ revoke all on function set_starters(text, jsonb) from public, anon;
 
 Это единственный параметр, который спека оставила открытым. Взять уже проиндексированный домен и посмотреть на реальные значения близости:
 
-Сначала получить ключ уже проиндексированного лида той же RPC, что использует
-конвейер, — без захода в дашборд:
+Сначала получить ключ уже проиндексированного лида. Читать его нужно **не**
+через `set_starters` — та функция пишет и затёрла бы стартовые вопросы. В SQL
+Editor выполнить:
+
+```sql
+select access_key from leads where slug = 'coadvise-co';
+```
+
+Скопировать значение в файл, чтобы не таскать его через историю команд:
 
 ```bash
-set -a && . ./.dev.vars && set +a
-node --input-type=module -e "
-import { rpc } from './src/db.ts'
-const rows = await rpc('set_starters', { p_slug: 'coadvise-co', p_questions: '[]' })
-console.log(rows[0].access_key)
-" > /tmp/lead-key.txt
-cat /tmp/lead-key.txt
+printf '%s' '<вставить access_key>' > /tmp/lead-key.txt
 ```
 
 Затем посмотреть на реальные значения близости:
@@ -2050,17 +2051,24 @@ jobs:
 
 Первый деплой создаст Worker; секрет задаётся после него, затем повторный push.
 
-- [ ] **Step 3: Запушить и проверить выкат**
+- [ ] **Step 3: Закоммитить workflow в рабочую ветку**
 
 ```bash
 git add .github/workflows/deploy.yml
 git commit -m "ci: выкат Worker через GitHub Actions"
-git push origin main
 ```
+
+**Шаги 4-7 выполняются только после слияния ветки в `main`** — workflow
+срабатывает на push в `main`, и до слияния выката не будет. Слияние выносится
+человеку: это публикация наружу, а не шаг реализации.
 
 Проверить: `gh run watch` или вкладка Actions. Expected: зелёный прогон, шаг Deploy печатает URL Worker'а.
 
-- [ ] **Step 4: Проверить страницу вживую**
+- [ ] **Step 4: (после слияния) Проверить выкат**
+
+Проверить: `gh run watch` или вкладка Actions. Expected: зелёный прогон, шаг Deploy печатает URL Worker'а.
+
+- [ ] **Step 5: (после слияния) Проверить страницу вживую**
 
 Взять ссылку из `doPublish` и открыть её **с телефона** (условие приёмки из спеки):
 
@@ -2076,7 +2084,7 @@ Expected: `200`. Затем на телефоне задать три вопро
 select question, had_answer, created_at from ask_log order by created_at desc limit 10;
 ```
 
-- [ ] **Step 5: Проверить, что чужой ключ не даёт чужих данных**
+- [ ] **Step 6: (после слияния) Проверить, что чужой ключ не даёт чужих данных**
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" https://coadvise.co/d/00000000000000000000000000000000
@@ -2084,7 +2092,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://coadvise.co/d/00000000000000000
 
 Expected: `404`.
 
-- [ ] **Step 6: Закоммитить финальное состояние**
+- [ ] **Step 7: (после слияния) Закоммитить финальное состояние**
 
 ```bash
 git add -A
