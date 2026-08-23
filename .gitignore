@@ -8,3 +8,5 @@ dist/
 widget-demo-rag.md
 CLAUDE.md
 *.local.md
+.playwright-mcp/
+*.png

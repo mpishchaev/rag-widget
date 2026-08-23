@@ -52,7 +52,8 @@ alter table ask_log enable row level security;
 --
 -- search_path у всех функций ниже — `public, extensions`. Supabase ставит
 -- pgcrypto и vector в схему extensions; с `search_path = public` тело функции
--- не находит ни gen_random_bytes (upsert_lead), ни оператор <=> (match_chunks).
+-- не находит оператор <=> (match_chunks). pgcrypto здесь больше не нужен, но
+-- extensions в пути оставлен: vector живёт там же.
 -- Тела plpgsql/sql не резолвятся при создании, поэтому ошибка вылезает не в SQL
 -- Editor, а на первом ingest и на первом вопросе посетителя.
 
@@ -114,7 +115,10 @@ begin
   select l.id into v_id from leads l where l.slug = p_slug;
   if v_id is null then
     insert into leads (slug, name, site_url, access_key)
-    values (p_slug, p_name, p_site_url, encode(gen_random_bytes(24), 'hex'))
+    -- Ключ доступа = слаг домена. Решение владельца 23-08: ссылка в письме
+    -- должна читаться. Плата за это названа явно в спеке — ссылка становится
+    -- угадываемой, страницы лидов находятся перебором доменов.
+    values (p_slug, p_name, p_site_url, p_slug)
     returning leads.id into v_id;
   else
     update leads set name = p_name, site_url = p_site_url where leads.id = v_id;

@@ -56,7 +56,10 @@ function logQuestion(
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
-    const match = url.pathname.match(/^\/d\/([A-Za-z0-9]{16,128})(\/ask)?$/)
+    // Ключ — слаг домена лида: строчные буквы, цифры и дефисы, 3-64 символа.
+    // Края обязаны быть алфавитно-цифровыми, поэтому ни `..`, ни `-acme`, ни
+    // `acme_co` сюда не пролезают.
+    const match = url.pathname.match(/^\/d\/([a-z0-9][a-z0-9-]{1,62}[a-z0-9])(\/ask)?$/)
     if (!match) return new Response('Not found', { status: 404 })
 
     const accessKey = match[1]

@@ -78,3 +78,21 @@ test('429 от эмбеддинга даёт JSON с просьбой повто
   assert.match(data.answer, /ещё раз|позже/i)
   assert.doesNotMatch(data.answer, /quota exceeded/)
 })
+
+test('маршрут принимает ключ-слаг с дефисами', async () => {
+  const res = await withFetch(async (url) => {
+    if (url.includes('rpc/get_lead_page')) {
+      return Response.json([{ name: 'Acme', site_url: 'https://acme.co', starter_questions: [] }])
+    }
+    throw new Error('неожиданный URL: ' + url)
+  }, () => worker.fetch(new Request('https://w.example/d/acme-co'), env))
+  assert.equal(res.status, 200)
+  assert.match(res.headers.get('content-type') ?? '', /text\/html/)
+})
+
+test('маршрут отвергает попытку выйти из /d/ через путь', async () => {
+  for (const bad of ['/d/../admin', '/d/acme_co', '/d/-acme', '/d/acme-', '/d/ac']) {
+    const res = await worker.fetch(new Request('https://w.example' + bad), env)
+    assert.equal(res.status, 404, `должен быть 404 для ${bad}`)
+  }
+})
