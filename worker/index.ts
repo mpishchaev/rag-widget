@@ -4,7 +4,7 @@ import {
   buildPrompt, hasAnswer, truncateQuestion, NO_ANSWER, MAX_SESSION,
   type Source,
 } from '../src/prompt.ts'
-import { renderPage, type Lead } from './page.ts'
+import { renderPage, renderNotFound, type Lead } from './page.ts'
 
 type Env = {
   SUPABASE_URL: string
@@ -13,7 +13,7 @@ type Env = {
 }
 
 const GEN_MODEL = 'gemini-2.5-flash'
-const SERVICE_ERROR = 'Сервис временно недоступен. Попробуйте ещё раз позже.'
+const SERVICE_ERROR = 'The service is briefly unavailable. Please try again in a moment.'
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -42,6 +42,15 @@ async function generate(prompt: string, apiKey: string): Promise<string> {
   return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? NO_ANSWER
 }
 
+/** Один ответ на всё, что не нашлось: протухшая ссылка, опечатка в адресе,
+ * перебор чужих слагов. Приглашение написать, а не сообщение об ошибке. */
+function notFound(): Response {
+  return new Response(renderNotFound(), {
+    status: 404,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex' },
+  })
+}
+
 /** Логирование — сайд-эффект, не источник истины для ответа: провал не должен стоить уже посчитанного ответа. */
 function logQuestion(
   db: { url: string; key: string },
@@ -60,7 +69,7 @@ export default {
     // Края обязаны быть алфавитно-цифровыми, поэтому ни `..`, ни `-acme`, ни
     // `acme_co` сюда не пролезают.
     const match = url.pathname.match(/^\/d\/([a-z0-9][a-z0-9-]{1,62}[a-z0-9])(\/ask)?$/)
-    if (!match) return new Response('Not found', { status: 404 })
+    if (!match) return notFound()
 
     const accessKey = match[1]
     const db = { url: env.SUPABASE_URL, key: env.SUPABASE_PUBLISHABLE_KEY }
@@ -75,7 +84,7 @@ export default {
         // rpc() кладёт в сообщение тело ответа PostgREST — наружу оно уходить не должно.
         return new Response(SERVICE_ERROR, { status: 502 })
       }
-      if (rows.length === 0) return new Response('Not found', { status: 404 })
+      if (rows.length === 0) return notFound()
       return new Response(renderPage(rows[0], accessKey), {
         headers: { 'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex' },
       })
@@ -87,7 +96,7 @@ export default {
     const body = (await request.json().catch(() => ({}))) as { question?: string; session?: string }
     const question = truncateQuestion((body.question ?? '').trim())
     const session = (body.session ?? '').slice(0, 64)
-    if (!question || !session) return json({ answer: 'Пустой вопрос.' })
+    if (!question || !session) return json({ answer: 'That question came through empty.' })
 
     let used: number
     try {
@@ -98,7 +107,7 @@ export default {
     // ponytail: session id генерируется и передаётся клиентом — сброс localStorage
     // или новый UUID в теле запроса обходит потолок. Апгрейд: Turnstile или счётчик по IP в Worker.
     if (used >= MAX_SESSION) {
-      return json({ answer: `Достигнут потолок в ${MAX_SESSION} вопросов. Напишите команде напрямую.` })
+      return json({ answer: `That is ${MAX_SESSION} questions for this visit. Write to the team directly to keep going.` })
     }
 
     // 429 free tier — ожидаемый случай на демо, а не экзотика: наружу уходит
@@ -107,7 +116,7 @@ export default {
     try {
       vector = (await embed([question], 'RETRIEVAL_QUERY', env.GEMINI_API_KEY))[0]
     } catch {
-      return json({ answer: 'Не удалось обработать вопрос. Попробуйте ещё раз через минуту.' }, 502)
+      return json({ answer: 'I could not process that question. Please try again in a minute.' }, 502)
     }
     let sources: Source[]
     try {
@@ -130,7 +139,7 @@ export default {
     try {
       answer = await generate(buildPrompt(question, sources), env.GEMINI_API_KEY)
     } catch {
-      answer = 'Модель не ответила. Попробуйте ещё раз через минуту.'
+      answer = 'The model did not answer. Please try again in a minute.'
     }
     // Ответ уже посчитан — провал логирования не должен стоить визитёру этого ответа.
     await logQuestion(db, { p_access_key: accessKey, p_session: session, p_q: question, p_had_answer: true })

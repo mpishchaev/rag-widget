@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   truncateQuestion, escapeSource, hasAnswer, buildPrompt,
-  MAX_QUESTION, MAX_SESSION, SIMILARITY_FLOOR,
+  MAX_QUESTION, MAX_SESSION, SIMILARITY_FLOOR, NO_ANSWER,
 } from './prompt.ts'
 
 test('вопрос обрезается по лимиту', () => {
@@ -37,8 +37,22 @@ test('промпт несёт инструкцию до и после данны
   ])
   const first = p.indexOf('<source')
   const last = p.lastIndexOf('</source>')
-  assert.ok(p.slice(0, first).includes('не знаю'), 'нет инструкции перед данными')
-  assert.ok(p.slice(last).includes('не знаю'), 'нет инструкции после данных')
+  assert.ok(p.slice(0, first).includes('do not know'), 'нет инструкции перед данными')
+  assert.ok(p.slice(last).includes('do not know'), 'нет инструкции после данных')
+})
+
+test('промпт требует отвечать на языке вопроса', () => {
+  const p = buildPrompt('¿Qué fabrican?', [{ text: 'т', url: 'https://x.com', similarity: 0.9 }])
+  const last = p.lastIndexOf('</source>')
+  assert.match(p, /same language as the visitor's question/i)
+  assert.ok(
+    p.slice(last).match(/same language as the visitor's question/i),
+    'правило о языке повторено после данных — иначе его легко перехватить из середины',
+  )
+})
+
+test('отказ «не знаю» написан на языке страницы', () => {
+  assert.doesNotMatch(NO_ANSWER, /[а-яё]/i, 'страница английская — дефолтный отказ тоже')
 })
 
 test('промпт содержит url источника для проверяемости', () => {

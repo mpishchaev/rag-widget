@@ -16,10 +16,13 @@ export function parseStarters(raw: string): string[] {
 const MAX_SAMPLE = 12000
 
 const PROMPT = [
-  'Ниже — фрагменты публичного сайта компании.',
-  'Придумай 3-4 коротких вопроса, которые задал бы её потенциальный клиент.',
-  'Вопросы должны опираться на приведённый текст и звучать естественно.',
-  'Выведи только список вопросов, по одному в строке, без пояснений.',
+  'Below are excerpts from a company public website.',
+  'Write 3-4 short questions a prospective customer of that company would ask.',
+  'The questions must be grounded in the text above and sound natural.',
+  // Вопросы читает адресат письма на своём же сайте: язык вопросов обязан
+  // совпадать с языком его контента, а не с языком этой инструкции.
+  'Write them in the same language as the website text.',
+  'Output only the list of questions, one per line, with no explanations.',
 ].join(' ')
 
 /**

@@ -37,7 +37,7 @@ test('текст с сайта попадает в промпт как данн�
   const dataEnd = prompt.lastIndexOf('</source>')
   assert.ok(dataEnd > 0, 'нет блока source')
   assert.ok(
-    prompt.slice(dataEnd).includes('только список вопросов'),
+    prompt.slice(dataEnd).includes('only the list of questions'),
     'инструкция не повторена после данных',
   )
 })

@@ -7,8 +7,14 @@ create table if not exists leads (
   site_url text not null,
   access_key text not null unique,
   starter_questions jsonb not null default '[]'::jsonb,
+  -- Факты-доказательства для блока «что я прочитал»: [{"text": "...", "url": "..."}].
+  -- Каждый со ссылкой на страницу лида — блок держится на проверяемости.
+  proof_facts jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
+
+-- Для баз, залитых до 23-08: колонка появилась вместе с продающей страницей.
+alter table leads add column if not exists proof_facts jsonb not null default '[]'::jsonb;
 
 create table if not exists pages (
   id uuid primary key default gen_random_uuid(),
@@ -57,10 +63,14 @@ alter table ask_log enable row level security;
 -- Тела plpgsql/sql не резолвятся при создании, поэтому ошибка вылезает не в SQL
 -- Editor, а на первом ingest и на первом вопросе посетителя.
 
-create or replace function get_lead_page(p_access_key text)
-returns table (name text, site_url text, starter_questions jsonb)
+-- Возвращаемый тип менялся (добавились proof_facts и pages_read), а
+-- `create or replace` смену OUT-параметров не переживает — только через drop.
+drop function if exists get_lead_page(text);
+create function get_lead_page(p_access_key text)
+returns table (name text, site_url text, starter_questions jsonb, proof_facts jsonb, pages_read int)
 language sql security definer set search_path = public, extensions stable as $$
-  select l.name, l.site_url, l.starter_questions
+  select l.name, l.site_url, l.starter_questions, l.proof_facts,
+         (select count(*)::int from pages p where p.lead_id = l.id)
   from leads l where l.access_key = p_access_key;
 $$;
 
@@ -147,11 +157,14 @@ end $$;
 revoke all on function upsert_lead(text, text, text) from public, anon, authenticated;
 revoke all on function upsert_page(uuid, text, text, int) from public, anon, authenticated;
 
-create or replace function set_starters(p_slug text, p_questions jsonb)
+-- Один вызов на весь publish: вопросы и факты пишутся вместе, потому что
+-- собираются вместе и порознь смысла не имеют.
+drop function if exists set_starters(text, jsonb);
+create or replace function set_page_content(p_slug text, p_questions jsonb, p_facts jsonb)
 returns table (access_key text)
 language sql security definer set search_path = public, extensions as $$
-  update leads set starter_questions = p_questions where slug = p_slug
+  update leads set starter_questions = p_questions, proof_facts = p_facts where slug = p_slug
   returning leads.access_key;
 $$;
 
-revoke all on function set_starters(text, jsonb) from public, anon, authenticated;
+revoke all on function set_page_content(text, jsonb, jsonb) from public, anon, authenticated;

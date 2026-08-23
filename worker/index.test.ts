@@ -75,14 +75,16 @@ test('429 от эмбеддинга даёт JSON с просьбой повто
   })
   assert.equal(res.headers.get('content-type'), 'application/json; charset=utf-8')
   const data = await res.json() as { answer: string }
-  assert.match(data.answer, /ещё раз|позже/i)
+  assert.match(data.answer, /try again/i)
   assert.doesNotMatch(data.answer, /quota exceeded/)
 })
 
 test('маршрут принимает ключ-слаг с дефисами', async () => {
   const res = await withFetch(async (url) => {
     if (url.includes('rpc/get_lead_page')) {
-      return Response.json([{ name: 'Acme', site_url: 'https://acme.co', starter_questions: [] }])
+      return Response.json([
+        { name: 'Acme', site_url: 'https://acme.co', starter_questions: [], proof_facts: [], pages_read: 3 },
+      ])
     }
     throw new Error('неожиданный URL: ' + url)
   }, () => worker.fetch(new Request('https://w.example/d/acme-co'), env))
@@ -95,4 +97,23 @@ test('маршрут отвергает попытку выйти из /d/ че�
     const res = await worker.fetch(new Request('https://w.example' + bad), env)
     assert.equal(res.status, 404, `должен быть 404 для ${bad}`)
   }
+})
+
+test('404 отдаёт страницу-приглашение, а не голый текст', async () => {
+  const res = await worker.fetch(new Request('https://w.example/d/acme_co'), env)
+  assert.equal(res.status, 404)
+  assert.match(res.headers.get('content-type') ?? '', /text\/html/)
+  assert.match(await res.text(), /mailto:maxim@coadvise\.co/)
+})
+
+test('несуществующий лид тоже получает приглашение, а не сообщение об ошибке', async () => {
+  const res = await withFetch(
+    async (url) => {
+      if (url.includes('rpc/get_lead_page')) return Response.json([])
+      throw new Error('неожиданный URL: ' + url)
+    },
+    () => worker.fetch(new Request('https://w.example/d/nobody-here'), env),
+  )
+  assert.equal(res.status, 404)
+  assert.match(await res.text(), /Email me/)
 })

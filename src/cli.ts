@@ -6,6 +6,7 @@ import { insert, rpc } from './db.ts'
 import { slugify, savePages, loadPages } from './store.ts'
 import { fetchAsPage, manualPage, appendPage } from './add.ts'
 import { suggestStarters } from './starters.ts'
+import { suggestFacts } from './proof.ts'
 
 type Values = {
   depth?: string
@@ -22,7 +23,7 @@ let values: Values = {}
 let slug = ''
 let origin = ''
 
-/** `set_starters` — единственная write-RPC, которая законно может не найти строку
+/** `set_page_content` — единственная write-RPC, которая законно может не найти строку
  * (UPDATE ... WHERE slug = ...): publish без предшествующего ingest, опечатка в домене. */
 export function requireAccessKey(rows: { access_key: string }[], slugForError: string): string {
   if (rows.length === 0) throw new Error(`лид ${slugForError} не найден — сначала запусти ingest`)
@@ -105,9 +106,15 @@ async function doPublish(): Promise<void> {
   const starters = await suggestStarters(sample)
   console.log('стартовые вопросы:', starters.length ? starters : '(не собрались, страница будет без карточек)')
 
-  const rows = await rpc<{ access_key: string }[]>('set_starters', {
+  // Последовательно, а не Promise.all: два вызова Gemini подряд спокойнее
+  // укладываются в RPM free tier, а publish и так не на секундомере.
+  const facts = await suggestFacts(pages.map((p) => ({ url: p.url, text: p.text })))
+  console.log('факты-доказательства:', facts.length ? facts.map((f) => f.text) : '(не собрались, блок не покажется)')
+
+  const rows = await rpc<{ access_key: string }[]>('set_page_content', {
     p_slug: slug,
     p_questions: starters,
+    p_facts: facts,
   })
   const accessKey = requireAccessKey(rows, slug)
   console.log(`\nссылка: https://coadvise.co/d/${accessKey}\n`)
